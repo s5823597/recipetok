@@ -1,4 +1,4 @@
-# RecipeTok AI
+# Flavourflow
 
 ## Overview
 RecipeTok AI is a multimodal AI pipeline that extracts structured recipes from TikTok cooking videos. It combines speech recognition, video analysis, and large language models to transform unstructured cooking content into organised, actionable recipes.
@@ -42,7 +42,7 @@ RecipeTok AI is a multimodal AI pipeline that extracts structured recipes from T
 
 ## Project Structure
 ```
-Recipetok.py    → main marimo notebook with full pipeline
+Flavourflow.py    → main marimo notebook with full pipeline
 src/            → source code modules
 prompts/        → LLM prompt templates and logs
 outputs/        → downloaded videos and extracted data
