@@ -104,7 +104,7 @@ def _(os, url, yt_dlp):
 
     print("Video:", video_file)  # show video path
     print("Subtitles:", subtitle_file)  # show subtitle path (None if no subs)
-    return (subtitle_file,)
+    return subtitle_file, video_file
 
 
 @app.cell(hide_code=True)
@@ -116,19 +116,27 @@ def _(mo):
 
 
 @app.cell
-def _(subtitle_file):
+def _(subtitle_file, video_file):
+    import whisper
+
     speech_text = ""
 
     if subtitle_file:  # subtitles found, use them
-        with open(subtitle_file, "r") as sub_file:  # renamed from f to sub_file
+        with open(subtitle_file, "r") as sub_file:
             lines = sub_file.readlines()
         for line in lines:  # filter out timestamps and metadata
             line = line.strip()
             if line and not line.startswith("WEBVTT") and "-->" not in line and not line.isdigit():
                 speech_text += line + " "
         print("Source: TikTok subtitles")
-    else:  # no subtitles, will use Whisper later
-        print("No subtitles found — will use Whisper")
+    elif video_file:  # no subtitles — fall back to Whisper ASR
+        print("No subtitles found — running Whisper ASR...")
+        whisper_model = whisper.load_model("base")
+        result = whisper_model.transcribe(video_file)
+        speech_text = result["text"]
+        print("Source: Whisper ASR")
+    else:
+        print("No video or subtitles found — cannot extract speech")
 
     print("\nSpeech text:")
     print(speech_text.strip())
@@ -206,11 +214,6 @@ def _(data, model, speech_text, tokenizer):
     response = tokenizer.decode(output[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
 
     print(response)
-    return
-
-
-@app.cell
-def _():
     return
 
 
