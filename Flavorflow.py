@@ -16,11 +16,13 @@ def _(mo):
 def _():
     import marimo as mo
     import yt_dlp
-    import json # lets Python read JSON data (yt-dlp returns data in JSON format)
-    import os # lets Phyton interact with the file system — create folders, list files, check if files exist, get file paths.
+    import whisper
+    import json
+    import os
     from groq import Groq
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    return mo, os, yt_dlp
+    return AutoModelForCausalLM, AutoTokenizer, mo, os, yt_dlp, whisper
 
 
 @app.cell(hide_code=True)
@@ -116,9 +118,7 @@ def _(mo):
 
 
 @app.cell
-def _(subtitle_file, video_file):
-    import whisper
-
+def _(subtitle_file, video_file, whisper):
     speech_text = ""
 
     if subtitle_file:  # subtitles found, use them
@@ -152,9 +152,7 @@ def _(mo):
 
 
 @app.cell
-def _():
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
+def _(AutoModelForCausalLM, AutoTokenizer):
     model_name = "Qwen/Qwen2.5-1.5B-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
