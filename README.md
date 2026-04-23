@@ -51,9 +51,9 @@ tests/          → test scripts and evaluation
 
 ## Quick Start
 ```bash
-cd recipetok
+cd flavourflow
 uv venv --python python3.11
 source .venv/bin/activate
-uv pip install marimo yt-dlp openai-whisper requests transformers accelerate
-marimo edit Recipetok.py
+uv pip install -r requirements.txt
+marimo edit Flavorflow.py
 ```
