@@ -15,12 +15,12 @@ def _(mo):
 @app.cell
 def _():
     import marimo as mo
-    import subprocess #  lets Python run terminal commands (we need this to run yt-dlp)
+    import yt_dlp
     import json # lets Python read JSON data (yt-dlp returns data in JSON format)
-    import os # lets Phyton interact with the file system — create folders, list files, check if files exist, get file paths. 
+    import os # lets Phyton interact with the file system — create folders, list files, check if files exist, get file paths.
     from groq import Groq
 
-    return json, mo, os, subprocess
+    return json, mo, os, yt_dlp
 
 
 @app.cell(hide_code=True)
@@ -46,13 +46,9 @@ def _(mo):
 
 
 @app.cell
-def _(json, subprocess, url):
-    result = subprocess.run(  # run yt-dlp command
-        ["yt-dlp", "--dump-json", "--no-download", url], # get metadata only, no download
-        capture_output=True, text=True  # capture output as text
-    )
-
-    data = json.loads(result.stdout)  # parse JSON response into dictionary
+def _(yt_dlp, url):
+    with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        data = ydl.extract_info(url, download=False)
     return (data,)
 
 
@@ -83,17 +79,18 @@ def _(mo):
 
 
 @app.cell
-def _(os, subprocess, url):
+def _(os, yt_dlp, url):
     os.makedirs("outputs", exist_ok=True)  # create outputs folder if it doesn't exist
 
-    subprocess.run([
-        "yt-dlp",  # run yt-dlp
-        "--write-subs",  # download subtitles if available
-        "--sub-langs", "all",  # get all subtitle languages
-        "--write-auto-subs",  # also get auto-generated subtitles
-        "-o", "outputs/%(id)s.%(ext)s",  # save to outputs folder with video ID as filename
-        url  # the TikTok URL
-    ])
+    ydl_opts = {
+        'writesubtitles': True,
+        'subtitleslangs': ['all'],
+        'writeautomaticsub': True,
+        'outtmpl': 'outputs/%(id)s.%(ext)s',
+        'quiet': True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
 
     video_id = url.split("/")[-1].split("?")[0]  # extract video ID from URL
     video_file = None  # will store video file path
@@ -209,11 +206,6 @@ def _(data, model, speech_text, tokenizer):
     response = tokenizer.decode(output[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
 
     print(response)
-    return
-
-
-@app.cell
-def _():
     return
 
 
