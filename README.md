@@ -1,7 +1,7 @@
 # Flavourflow
 
 ## Overview
-RecipeTok AI is a multimodal AI pipeline that extracts structured recipes from TikTok cooking videos. It combines speech recognition, video analysis, and large language models to transform unstructured cooking content into organised, actionable recipes.
+Flavourflow is a multimodal AI pipeline that extracts structured recipes from TikTok cooking videos. It combines speech recognition, video analysis, and large language models to transform unstructured cooking content into organised, actionable recipes.
 
 ## Features
 - Extracts video metadata (title, description, uploader) from TikTok URLs
