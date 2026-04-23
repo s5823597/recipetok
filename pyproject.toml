@@ -1,0 +1,13 @@
+[project]
+name = "flavourflow"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "marimo",
+    "yt-dlp",
+    "groq",
+    "transformers",
+    "accelerate",
+    "torch",
+    "openai-whisper",
+]
