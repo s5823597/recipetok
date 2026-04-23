@@ -20,7 +20,7 @@ def _():
     import os # lets Phyton interact with the file system — create folders, list files, check if files exist, get file paths.
     from groq import Groq
 
-    return json, mo, os, yt_dlp
+    return mo, os, yt_dlp
 
 
 @app.cell(hide_code=True)
@@ -46,9 +46,9 @@ def _(mo):
 
 
 @app.cell
-def _(yt_dlp, url):
-    with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-        data = ydl.extract_info(url, download=False)
+def _(url, yt_dlp):
+    with yt_dlp.YoutubeDL({'quiet': True}) as ydl_meta:
+        data = ydl_meta.extract_info(url, download=False)
     return (data,)
 
 
@@ -79,7 +79,7 @@ def _(mo):
 
 
 @app.cell
-def _(os, yt_dlp, url):
+def _(os, url, yt_dlp):
     os.makedirs("outputs", exist_ok=True)  # create outputs folder if it doesn't exist
 
     ydl_opts = {
@@ -89,8 +89,8 @@ def _(os, yt_dlp, url):
         'outtmpl': 'outputs/%(id)s.%(ext)s',
         'quiet': True,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl_dl:
+        ydl_dl.download([url])
 
     video_id = url.split("/")[-1].split("?")[0]  # extract video ID from URL
     video_file = None  # will store video file path
@@ -206,6 +206,16 @@ def _(data, model, speech_text, tokenizer):
     response = tokenizer.decode(output[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
 
     print(response)
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
     return
 
 
