@@ -22,7 +22,7 @@ def _():
     from groq import Groq
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    return AutoModelForCausalLM, AutoTokenizer, mo, os, yt_dlp, whisper
+    return AutoModelForCausalLM, AutoTokenizer, mo, os, whisper, yt_dlp
 
 
 @app.cell(hide_code=True)
@@ -215,9 +215,93 @@ def _(data, model, speech_text, tokenizer):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Test Suite — 4 Languages
+    """)
+    return
+
+
 @app.cell
 def _():
-    return
+    test_videos = [
+        {"language": "English", "url": "https://www.tiktok.com/@zachsfoods/video/7595255804333149470"},
+        {"language": "Malay",   "url": "https://www.tiktok.com/@syiqinazrin/video/7608900115130027284"},
+        {"language": "Arabic",  "url": "https://www.tiktok.com/@danahnalshaya/video/7059812099437956354"},
+        {"language": "Chinese", "url": "https://www.tiktok.com/@hhfghvgfj/video/7435622193951739154"},
+    ]
+    return (test_videos,)
+
+
+@app.cell
+def _(os, test_videos, whisper, yt_dlp):
+    import json as _json
+
+    os.makedirs("outputs", exist_ok=True)
+
+    test_results = []
+
+    for video in test_videos:
+        lang = video["language"]
+        url_t = video["url"]
+        print(f"\n--- {lang} ---")
+
+        # fetch metadata
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl_t:
+            meta = ydl_t.extract_info(url_t, download=False)
+
+        # download video + subtitles
+        ydl_opts_t = {
+            'writesubtitles': True,
+            'subtitleslangs': ['all'],
+            'writeautomaticsub': True,
+            'outtmpl': 'outputs/%(id)s.%(ext)s',
+            'quiet': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts_t) as ydl_t2:
+            ydl_t2.download([url_t])
+
+        video_id_t = url_t.split("/")[-1].split("?")[0]
+        video_file_t = None
+        subtitle_file_t = None
+        for f in os.listdir("outputs"):
+            if video_id_t in f and f.endswith(".mp4"):
+                video_file_t = f"outputs/{f}"
+            if video_id_t in f and (".vtt" in f or ".srt" in f):
+                subtitle_file_t = f"outputs/{f}"
+
+        # extract speech
+        speech_t = ""
+        if subtitle_file_t:
+            with open(subtitle_file_t, "r") as sf:
+                for line in sf.readlines():
+                    line = line.strip()
+                    if line and not line.startswith("WEBVTT") and "-->" not in line and not line.isdigit():
+                        speech_t += line + " "
+            source = "subtitles"
+        elif video_file_t:
+            whisper_model_t = whisper.load_model("base")
+            speech_t = whisper_model_t.transcribe(video_file_t)["text"]
+            source = "whisper"
+        else:
+            source = "none"
+
+        print(f"Speech source: {source}")
+        print(f"Title: {meta.get('title', 'N/A')}")
+        print(f"Speech preview: {speech_t.strip()[:200]}")
+
+        test_results.append({
+            "language": lang,
+            "url": url_t,
+            "title": meta.get("title", ""),
+            "speech_source": source,
+            "speech_text": speech_t.strip(),
+            "description": meta.get("description", ""),
+        })
+
+    print("\nAll videos processed.")
+    return (test_results,)
 
 
 if __name__ == "__main__":
