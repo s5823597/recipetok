@@ -434,26 +434,24 @@ def _(json, mo, model, re, test_results, tokenizer):
         output_e = model.generate(**inputs_e, max_new_tokens=1024, temperature=0.1, do_sample=True)
         response_e = tokenizer.decode(output_e[0][inputs_e.input_ids.shape[-1]:], skip_special_tokens=True)
 
-        # parse JSON from response
         try:
             json_match = re.search(r'\{.*\}', response_e, re.DOTALL)
             recipe_e = json.loads(json_match.group()) if json_match else {}
         except Exception:
             recipe_e = {}
 
-        # score each field
-        dish_ok    = bool(str(recipe_e.get("dish_name", "")).strip())
-        ingr_ok    = len(recipe_e.get("ingredients", [])) >= 2
-        steps_ok   = len(recipe_e.get("steps", [])) >= 2
-        score      = sum([dish_ok, ingr_ok, steps_ok])
+        dish_ok  = bool(str(recipe_e.get("dish_name", "")).strip())
+        ingr_ok  = len(recipe_e.get("ingredients", [])) >= 2
+        steps_ok = len(recipe_e.get("steps", [])) >= 2
+        score    = sum([dish_ok, ingr_ok, steps_ok])
 
         eval_rows.append({
-            "Language":       result["language"],
-            "Dish Name":      recipe_e.get("dish_name", "—"),
-            "Dish ✓":         "✓" if dish_ok  else "✗",
-            "Ingredients ✓":  "✓" if ingr_ok  else "✗",
-            "Steps ✓":        "✓" if steps_ok else "✗",
-            "Score":          f"{score}/3",
+            "Language":      result["language"],
+            "Dish Name":     recipe_e.get("dish_name", "—"),
+            "Dish ✓":        "✓" if dish_ok  else "✗",
+            "Ingredients ✓": "✓" if ingr_ok  else "✗",
+            "Steps ✓":       "✓" if steps_ok else "✗",
+            "Score":         f"{score}/3",
         })
 
     eval_table = mo.ui.table(eval_rows)
@@ -463,12 +461,6 @@ def _(json, mo, model, re, test_results, tokenizer):
 @app.cell
 def _(eval_table):
     eval_table
-    return
-
-
-@app.cell
-def _():
-    return
 
 
 if __name__ == "__main__":
