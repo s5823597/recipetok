@@ -24,8 +24,15 @@ def _():
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from dotenv import load_dotenv
     load_dotenv()
-
-    return AutoModelForCausalLM, AutoTokenizer, json, mo, os, subprocess, whisper, yt_dlp
+    return (
+        AutoModelForCausalLM,
+        AutoTokenizer,
+        mo,
+        os,
+        subprocess,
+        whisper,
+        yt_dlp,
+    )
 
 
 @app.cell(hide_code=True)
@@ -208,7 +215,6 @@ def _(os, subprocess, video_file):
             print("No Groq API key or frames — skipping vision analysis")
     else:
         print("No video file — skipping vision analysis")
-
     return (visual_description,)
 
 
@@ -265,13 +271,16 @@ def _(data, model, speech_text, tokenizer, visual_description):
        - steps (numbered list)
        - halal_status (halal/not_halal/uncertain with reason)
 
+    IMPORTANT: The video may be in any language (Arabic, Malay, Chinese, etc.).
+    Always translate and respond entirely in English, regardless of the input language.
+
     Video Data:
     {context}
 
     Respond ONLY in valid JSON."""
 
     messages = [
-        {"role": "system", "content": "You are a recipe extraction assistant. Always respond in valid JSON only."},
+        {"role": "system", "content": "You are a recipe extraction assistant. Always respond in valid JSON in English only, even if the video is in another language."},
         {"role": "user", "content": prompt}
     ]
 
