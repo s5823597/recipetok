@@ -21,6 +21,7 @@ def _():
     import os
     import re
     import subprocess
+    import base64
     from groq import Groq
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from dotenv import load_dotenv
@@ -28,6 +29,8 @@ def _():
     return (
         AutoModelForCausalLM,
         AutoTokenizer,
+        Groq,
+        base64,
         json,
         mo,
         os,
@@ -165,9 +168,7 @@ def _(mo):
 
 
 @app.cell
-def _(os, subprocess, video_file):
-    import base64
-
+def _(Groq, base64, os, subprocess, video_file):
     visual_description = ""
 
     if video_file:
@@ -190,8 +191,7 @@ def _(os, subprocess, video_file):
         # encode frames as base64 and send to Groq vision model
         groq_api_key = os.environ.get("GROQ_API_KEY", "")
         if groq_api_key and frames:
-            from groq import Groq as _Groq
-            groq_client = _Groq(api_key=groq_api_key)
+            groq_client = Groq(api_key=groq_api_key)
 
             image_content = []
             for frame_path in frames:
@@ -463,6 +463,11 @@ def _(json, mo, model, re, test_results, tokenizer):
 @app.cell
 def _(eval_table):
     eval_table
+    return
+
+
+@app.cell
+def _():
     return
 
 
