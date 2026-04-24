@@ -298,6 +298,8 @@ def _(data, json, model, re, speech_text, tokenizer, visual_description):
     try:
         json_match_single = re.search(r'\{.*\}', cleaned_single, re.DOTALL)
         recipe = json.loads(json_match_single.group()) if json_match_single else {}
+        if "recipe" in recipe and isinstance(recipe["recipe"], dict):
+            recipe = recipe["recipe"]
     except Exception:
         recipe = {}
 
@@ -446,6 +448,8 @@ def _(json, mo, model, re, test_results, tokenizer):
             cleaned_e = re.sub(r'```(?:json)?\s*', '', response_e).strip()
             json_match_e = re.search(r'\{.*\}', cleaned_e, re.DOTALL)
             recipe_e = json.loads(json_match_e.group()) if json_match_e else {}
+            if "recipe" in recipe_e and isinstance(recipe_e["recipe"], dict):
+                recipe_e = recipe_e["recipe"]
         except Exception:
             recipe_e = {}
 
