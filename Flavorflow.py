@@ -293,7 +293,15 @@ def _(data, model, speech_text, tokenizer, visual_description):
     output = model.generate(**inputs, max_new_tokens=1024, temperature=0.1, do_sample=True)
     response = tokenizer.decode(output[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
 
-    print(response)
+    # strip markdown fences and parse JSON
+    cleaned_response = re.sub(r'```(?:json)?\s*', '', response).strip()
+    try:
+        json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
+        recipe = json.loads(json_match.group()) if json_match else {}
+    except Exception:
+        recipe = {}
+
+    print(json.dumps(recipe, indent=2, ensure_ascii=False) if recipe else response)
     return
 
 
@@ -435,10 +443,15 @@ def _(json, mo, model, re, test_results, tokenizer):
         response_e = tokenizer.decode(output_e[0][inputs_e.input_ids.shape[-1]:], skip_special_tokens=True)
 
         try:
-            json_match = re.search(r'\{.*\}', response_e, re.DOTALL)
+            # strip markdown code fences if present
+            cleaned = re.sub(r'```(?:json)?\s*', '', response_e).strip()
+            json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
             recipe_e = json.loads(json_match.group()) if json_match else {}
         except Exception:
             recipe_e = {}
+
+        print(f"[{test_result['language']}] raw response preview: {response_e[:200]}")
+        print(f"[{test_result['language']}] parsed recipe keys: {list(recipe_e.keys())}")
 
         dish_ok  = bool(str(recipe_e.get("dish_name", "")).strip())
         ingr_ok  = len(recipe_e.get("ingredients", [])) >= 2
