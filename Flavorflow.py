@@ -252,7 +252,7 @@ def _(mo):
 
 
 @app.cell
-def _(data, model, speech_text, tokenizer, visual_description):
+def _(data, json, model, re, speech_text, tokenizer, visual_description):
     context = f"""
     Video Title: {data.get("title", "")}
     Video Description: {data.get("description", "")}
@@ -294,10 +294,10 @@ def _(data, model, speech_text, tokenizer, visual_description):
     response = tokenizer.decode(output[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
 
     # strip markdown fences and parse JSON
-    cleaned_response = re.sub(r'```(?:json)?\s*', '', response).strip()
+    cleaned_single = re.sub(r'```(?:json)?\s*', '', response).strip()
     try:
-        json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
-        recipe = json.loads(json_match.group()) if json_match else {}
+        json_match_single = re.search(r'\{.*\}', cleaned_single, re.DOTALL)
+        recipe = json.loads(json_match_single.group()) if json_match_single else {}
     except Exception:
         recipe = {}
 
@@ -443,10 +443,9 @@ def _(json, mo, model, re, test_results, tokenizer):
         response_e = tokenizer.decode(output_e[0][inputs_e.input_ids.shape[-1]:], skip_special_tokens=True)
 
         try:
-            # strip markdown code fences if present
-            cleaned = re.sub(r'```(?:json)?\s*', '', response_e).strip()
-            json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
-            recipe_e = json.loads(json_match.group()) if json_match else {}
+            cleaned_e = re.sub(r'```(?:json)?\s*', '', response_e).strip()
+            json_match_e = re.search(r'\{.*\}', cleaned_e, re.DOTALL)
+            recipe_e = json.loads(json_match_e.group()) if json_match_e else {}
         except Exception:
             recipe_e = {}
 
