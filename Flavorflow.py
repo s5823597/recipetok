@@ -427,7 +427,8 @@ def _(json, mo, model, re, test_results, tokenizer):
            - steps (numbered list)
            - halal_status (halal/not_halal/uncertain with reason)
 
-        IMPORTANT: The video may be in any language. Always translate and respond entirely in English.
+        IMPORTANT: The video may be in any language (Arabic, Malay, Chinese, etc.).
+        You MUST translate ALL field values into English. Every single value in the JSON — including dish_name, ingredients, and steps — must be written in English. Do not use any other language in your response.
 
         Video Data:
         {context_e}
