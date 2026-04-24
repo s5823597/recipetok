@@ -22,6 +22,8 @@ def _():
     import subprocess
     from groq import Groq
     from transformers import AutoModelForCausalLM, AutoTokenizer
+    from dotenv import load_dotenv
+    load_dotenv()
 
     return AutoModelForCausalLM, AutoTokenizer, json, mo, os, subprocess, whisper, yt_dlp
 
@@ -147,6 +149,72 @@ def _(subtitle_file, video_file, whisper):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## Vision Analysis — Frame Extraction
+    """)
+    return
+
+
+@app.cell
+def _(os, subprocess, video_file):
+    import base64
+
+    visual_description = ""
+
+    if video_file:
+        frames_dir = f"outputs/frames_{os.path.basename(video_file).split('.')[0]}"
+        os.makedirs(frames_dir, exist_ok=True)
+
+        # extract 5 evenly spaced frames using ffmpeg
+        subprocess.run([
+            "ffmpeg", "-i", video_file,
+            "-vf", "fps=1/3", "-vframes", "5",
+            f"{frames_dir}/frame_%02d.jpg",
+            "-y", "-loglevel", "error"
+        ])
+
+        frames = sorted([
+            f"{frames_dir}/{f}" for f in os.listdir(frames_dir) if f.endswith(".jpg")
+        ])
+        print(f"Extracted {len(frames)} frames: {frames}")
+
+        # encode frames as base64 and send to Groq vision model
+        groq_api_key = os.environ.get("GROQ_API_KEY", "")
+        if groq_api_key and frames:
+            from groq import Groq as _Groq
+            groq_client = _Groq(api_key=groq_api_key)
+
+            image_content = []
+            for frame_path in frames:
+                with open(frame_path, "rb") as img_file:
+                    b64 = base64.b64encode(img_file.read()).decode("utf-8")
+                image_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
+                })
+            image_content.append({
+                "type": "text",
+                "text": "These are frames from a TikTok cooking video. Describe what ingredients, cooking techniques, and dishes you can see. Be specific and concise."
+            })
+
+            vision_response = groq_client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                messages=[{"role": "user", "content": image_content}],
+                max_tokens=512,
+            )
+            visual_description = vision_response.choices[0].message.content
+            print("Visual description:")
+            print(visual_description)
+        else:
+            print("No Groq API key or frames — skipping vision analysis")
+    else:
+        print("No video file — skipping vision analysis")
+
+    return (visual_description,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Load LLM (Qwen2.5)
     """)
     return
@@ -175,11 +243,12 @@ def _(mo):
 
 
 @app.cell
-def _(data, model, speech_text, tokenizer):
+def _(data, model, speech_text, tokenizer, visual_description):
     context = f"""
     Video Title: {data.get("title", "")}
     Video Description: {data.get("description", "")}
     Speech Transcript: {speech_text.strip()}
+    Visual Description: {visual_description.strip()}
     """
 
     prompt = f"""You are a recipe extraction AI. Analyse the following TikTok video data and:
