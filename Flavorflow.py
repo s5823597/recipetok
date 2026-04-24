@@ -114,11 +114,11 @@ def _(os, url, yt_dlp):
     video_file = None  # will store video file path
     subtitle_file = None  # will store subtitle file path
 
-    for f in os.listdir("outputs"):  # loop through downloaded files
-        if video_id in f and f.endswith(".mp4"):  # find the video file
-            video_file = f"outputs/{f}"
-        if video_id in f and (".vtt" in f or ".srt" in f):  # find subtitle file
-            subtitle_file = f"outputs/{f}"
+    for fname in os.listdir("outputs"):  # loop through downloaded files
+        if video_id in fname and fname.endswith(".mp4"):  # find the video file
+            video_file = f"outputs/{fname}"
+        if video_id in fname and (".vtt" in fname or ".srt" in fname):  # find subtitle file
+            subtitle_file = f"outputs/{fname}"
 
     print("Video:", video_file)  # show video path
     print("Subtitles:", subtitle_file)  # show subtitle path (None if no subs)
@@ -148,8 +148,8 @@ def _(subtitle_file, video_file, whisper):
     elif video_file:  # no subtitles — fall back to Whisper ASR
         print("No subtitles found — running Whisper ASR...")
         whisper_model = whisper.load_model("base")
-        result = whisper_model.transcribe(video_file)
-        speech_text = result["text"]
+        whisper_result = whisper_model.transcribe(video_file)
+        speech_text = whisper_result["text"]
         print("Source: Whisper ASR")
     else:
         print("No video or subtitles found — cannot extract speech")
@@ -345,29 +345,29 @@ def _(os, test_videos, whisper, yt_dlp):
         video_id_t = url_t.split("/")[-1].split("?")[0]
         video_file_t = None
         subtitle_file_t = None
-        for f in os.listdir("outputs"):
-            if video_id_t in f and f.endswith(".mp4"):
-                video_file_t = f"outputs/{f}"
-            if video_id_t in f and (".vtt" in f or ".srt" in f):
-                subtitle_file_t = f"outputs/{f}"
+        for fname_t in os.listdir("outputs"):
+            if video_id_t in fname_t and fname_t.endswith(".mp4"):
+                video_file_t = f"outputs/{fname_t}"
+            if video_id_t in fname_t and (".vtt" in fname_t or ".srt" in fname_t):
+                subtitle_file_t = f"outputs/{fname_t}"
 
         # extract speech
         speech_t = ""
         if subtitle_file_t:
             with open(subtitle_file_t, "r") as sf:
-                for line in sf.readlines():
-                    line = line.strip()
-                    if line and not line.startswith("WEBVTT") and "-->" not in line and not line.isdigit():
-                        speech_t += line + " "
-            source = "subtitles"
+                for line_t in sf.readlines():
+                    line_t = line_t.strip()
+                    if line_t and not line_t.startswith("WEBVTT") and "-->" not in line_t and not line_t.isdigit():
+                        speech_t += line_t + " "
+            source_t = "subtitles"
         elif video_file_t:
             whisper_model_t = whisper.load_model("base")
             speech_t = whisper_model_t.transcribe(video_file_t)["text"]
-            source = "whisper"
+            source_t = "whisper"
         else:
-            source = "none"
+            source_t = "none"
 
-        print(f"Speech source: {source}")
+        print(f"Speech source: {source_t}")
         print(f"Title: {meta.get('title', 'N/A')}")
         print(f"Speech preview: {speech_t.strip()[:200]}")
 
@@ -375,7 +375,7 @@ def _(os, test_videos, whisper, yt_dlp):
             "language": lang,
             "url": url_t,
             "title": meta.get("title", ""),
-            "speech_source": source,
+            "speech_source": source_t,
             "speech_text": speech_t.strip(),
             "description": meta.get("description", ""),
         })
@@ -396,11 +396,11 @@ def _(mo):
 def _(json, mo, model, re, test_results, tokenizer):
     eval_rows = []
 
-    for result in test_results:
+    for test_result in test_results:
         context_e = f"""
-        Video Title: {result['title']}
-        Video Description: {result['description']}
-        Speech Transcript: {result['speech_text'][:500]}
+        Video Title: {test_result['title']}
+        Video Description: {test_result['description']}
+        Speech Transcript: {test_result['speech_text'][:500]}
         """
 
         prompt_e = f"""You are a recipe extraction AI. Analyse the following TikTok video data and:
@@ -446,7 +446,7 @@ def _(json, mo, model, re, test_results, tokenizer):
         score    = sum([dish_ok, ingr_ok, steps_ok])
 
         eval_rows.append({
-            "Language":      result["language"],
+            "Language":      test_result["language"],
             "Dish Name":     recipe_e.get("dish_name", "—"),
             "Dish ✓":        "✓" if dish_ok  else "✗",
             "Ingredients ✓": "✓" if ingr_ok  else "✗",
@@ -461,6 +461,7 @@ def _(json, mo, model, re, test_results, tokenizer):
 @app.cell
 def _(eval_table):
     eval_table
+    return
 
 
 if __name__ == "__main__":
