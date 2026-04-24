@@ -19,6 +19,7 @@ def _():
     import whisper
     import json
     import os
+    import re
     import subprocess
     from groq import Groq
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -27,8 +28,10 @@ def _():
     return (
         AutoModelForCausalLM,
         AutoTokenizer,
+        json,
         mo,
         os,
+        re,
         subprocess,
         whisper,
         yt_dlp,
@@ -378,6 +381,88 @@ def _(os, test_videos, whisper, yt_dlp):
         })
 
     print("\nAll videos processed.")
+    return (test_results,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Evaluation — Scoring Table
+    """)
+    return
+
+
+@app.cell
+def _(json, mo, model, re, test_results, tokenizer):
+    eval_rows = []
+
+    for result in test_results:
+        context_e = f"""
+        Video Title: {result['title']}
+        Video Description: {result['description']}
+        Speech Transcript: {result['speech_text'][:500]}
+        """
+
+        prompt_e = f"""You are a recipe extraction AI. Analyse the following TikTok video data and:
+
+        1. Determine if this is a cooking video (YES/NO)
+        2. If YES, extract a structured recipe in JSON format with these fields:
+           - dish_name
+           - cuisine_type
+           - difficulty (easy/medium/hard)
+           - prep_time
+           - cook_time
+           - servings
+           - ingredients (list with quantity and item)
+           - steps (numbered list)
+           - halal_status (halal/not_halal/uncertain with reason)
+
+        IMPORTANT: The video may be in any language. Always translate and respond entirely in English.
+
+        Video Data:
+        {context_e}
+
+        Respond ONLY in valid JSON."""
+
+        messages_e = [
+            {"role": "system", "content": "You are a recipe extraction assistant. Always respond in valid JSON in English only."},
+            {"role": "user", "content": prompt_e}
+        ]
+
+        text_e = tokenizer.apply_chat_template(messages_e, tokenize=False, add_generation_prompt=True)
+        inputs_e = tokenizer([text_e], return_tensors="pt").to(model.device)
+        output_e = model.generate(**inputs_e, max_new_tokens=1024, temperature=0.1, do_sample=True)
+        response_e = tokenizer.decode(output_e[0][inputs_e.input_ids.shape[-1]:], skip_special_tokens=True)
+
+        # parse JSON from response
+        try:
+            json_match = re.search(r'\{.*\}', response_e, re.DOTALL)
+            recipe_e = json.loads(json_match.group()) if json_match else {}
+        except Exception:
+            recipe_e = {}
+
+        # score each field
+        dish_ok    = bool(str(recipe_e.get("dish_name", "")).strip())
+        ingr_ok    = len(recipe_e.get("ingredients", [])) >= 2
+        steps_ok   = len(recipe_e.get("steps", [])) >= 2
+        score      = sum([dish_ok, ingr_ok, steps_ok])
+
+        eval_rows.append({
+            "Language":       result["language"],
+            "Dish Name":      recipe_e.get("dish_name", "—"),
+            "Dish ✓":         "✓" if dish_ok  else "✗",
+            "Ingredients ✓":  "✓" if ingr_ok  else "✗",
+            "Steps ✓":        "✓" if steps_ok else "✗",
+            "Score":          f"{score}/3",
+        })
+
+    eval_table = mo.ui.table(eval_rows)
+    return (eval_table,)
+
+
+@app.cell
+def _(eval_table):
+    eval_table
     return
 
 
