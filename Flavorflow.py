@@ -19,10 +19,11 @@ def _():
     import whisper
     import json
     import os
+    import subprocess
     from groq import Groq
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    return AutoModelForCausalLM, AutoTokenizer, mo, os, whisper, yt_dlp
+    return AutoModelForCausalLM, AutoTokenizer, json, mo, os, subprocess, whisper, yt_dlp
 
 
 @app.cell(hide_code=True)
@@ -236,8 +237,6 @@ def _():
 
 @app.cell
 def _(os, test_videos, whisper, yt_dlp):
-    import json as _json
-
     os.makedirs("outputs", exist_ok=True)
 
     test_results = []
@@ -301,7 +300,7 @@ def _(os, test_videos, whisper, yt_dlp):
         })
 
     print("\nAll videos processed.")
-    return (test_results,)
+    return
 
 
 if __name__ == "__main__":
