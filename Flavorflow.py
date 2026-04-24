@@ -24,18 +24,8 @@ def _():
     import base64
     from groq import Groq
     from dotenv import load_dotenv
-    load_dotenv()
-    return (
-        Groq,
-        base64,
-        json,
-        mo,
-        os,
-        re,
-        subprocess,
-        whisper,
-        yt_dlp,
-    )
+    load_dotenv("/home/s5823597/Desktop/SEM/flavourflow/.env")
+    return Groq, base64, json, mo, os, re, subprocess, whisper, yt_dlp
 
 
 @app.cell(hide_code=True)
