@@ -23,12 +23,9 @@ def _():
     import subprocess
     import base64
     from groq import Groq
-    from transformers import AutoModelForCausalLM, AutoTokenizer
     from dotenv import load_dotenv
     load_dotenv()
     return (
-        AutoModelForCausalLM,
-        AutoTokenizer,
         Groq,
         base64,
         json,
@@ -191,7 +188,7 @@ def _(Groq, base64, os, subprocess, video_file):
         # encode frames as base64 and send to Groq vision model
         groq_api_key = os.environ.get("GROQ_API_KEY", "")
         if groq_api_key and frames:
-            groq_client = Groq(api_key=groq_api_key)
+            groq_vision_client = Groq(api_key=groq_api_key)
 
             image_content = []
             for frame_path in frames:
@@ -206,7 +203,7 @@ def _(Groq, base64, os, subprocess, video_file):
                 "text": "These are frames from a TikTok cooking video. Describe what ingredients, cooking techniques, and dishes you can see. Be specific and concise."
             })
 
-            vision_response = groq_client.chat.completions.create(
+            vision_response = groq_vision_client.chat.completions.create(
                 model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=[{"role": "user", "content": image_content}],
                 max_tokens=512,
@@ -224,35 +221,15 @@ def _(Groq, base64, os, subprocess, video_file):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Load LLM (Qwen2.5)
-    """)
-    return
-
-
-@app.cell
-def _(AutoModelForCausalLM, AutoTokenizer):
-    model_name = "Qwen/Qwen2.5-1.5B-Instruct"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map="auto",
-        torch_dtype="auto"
-    )
-
-    print("Model loaded!")
-    return model, tokenizer
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ## Extract Structured Recipe
     """)
     return
 
 
 @app.cell
-def _(data, json, model, re, speech_text, tokenizer, visual_description):
+def _(Groq, data, json, os, re, speech_text, visual_description):
+    groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+
     context = f"""
     Video Title: {data.get("title", "")}
     Video Description: {data.get("description", "")}
@@ -275,7 +252,7 @@ def _(data, json, model, re, speech_text, tokenizer, visual_description):
        - halal_status (halal/not_halal/uncertain with reason)
 
     IMPORTANT: The video may be in any language (Arabic, Malay, Chinese, etc.).
-    Always translate and respond entirely in English, regardless of the input language.
+    You MUST translate ALL field values into English. Every single value in the JSON — including dish_name, ingredients, and steps — must be written in English. Do not use any other language in your response.
 
     Video Data:
     {context}
@@ -287,13 +264,14 @@ def _(data, json, model, re, speech_text, tokenizer, visual_description):
         {"role": "user", "content": prompt}
     ]
 
-    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = tokenizer([text], return_tensors="pt").to(model.device)
+    groq_response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages,
+        max_tokens=1024,
+        temperature=0.1,
+    )
+    response = groq_response.choices[0].message.content
 
-    output = model.generate(**inputs, max_new_tokens=1024, temperature=0.1, do_sample=True)
-    response = tokenizer.decode(output[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
-
-    # strip markdown fences and parse JSON
     cleaned_single = re.sub(r'```(?:json)?\s*', '', response).strip()
     try:
         json_match_single = re.search(r'\{.*\}', cleaned_single, re.DOTALL)
@@ -403,7 +381,8 @@ def _(mo):
 
 
 @app.cell
-def _(json, mo, model, re, test_results, tokenizer):
+def _(Groq, json, mo, os, re, test_results):
+    groq_eval_client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
     eval_rows = []
 
     for test_result in test_results:
@@ -440,10 +419,13 @@ def _(json, mo, model, re, test_results, tokenizer):
             {"role": "user", "content": prompt_e}
         ]
 
-        text_e = tokenizer.apply_chat_template(messages_e, tokenize=False, add_generation_prompt=True)
-        inputs_e = tokenizer([text_e], return_tensors="pt").to(model.device)
-        output_e = model.generate(**inputs_e, max_new_tokens=1024, temperature=0.1, do_sample=True)
-        response_e = tokenizer.decode(output_e[0][inputs_e.input_ids.shape[-1]:], skip_special_tokens=True)
+        groq_resp_e = groq_eval_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages_e,
+            max_tokens=1024,
+            temperature=0.1,
+        )
+        response_e = groq_resp_e.choices[0].message.content
 
         try:
             cleaned_e = re.sub(r'```(?:json)?\s*', '', response_e).strip()
