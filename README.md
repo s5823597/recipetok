@@ -1,59 +1,86 @@
-# Flavourflow
+# FlavourFlow
 
-## Overview
-Flavourflow is a multimodal AI pipeline that extracts structured recipes from TikTok cooking videos. It combines speech recognition, video analysis, and large language models to transform unstructured cooking content into organised, actionable recipes.
+A multimodal AI pipeline that extracts structured recipes from TikTok cooking videos. Paste a URL — get a formatted recipe card with ingredients, steps, allergens, and dietary labels.
 
-## Features
-- Extracts video metadata (title, description, uploader) from TikTok URLs
-- Downloads videos and subtitles automatically
-- Extracts speech text from subtitles (Whisper fallback coming soon)
-- Uses Qwen2.5 LLM to classify cooking videos and structure recipes
-- Outputs structured JSON with dish name, ingredients, steps, cuisine type, difficulty, and halal status
+## Run Locally
+
+```bash
+git clone git@github.com:s5823597/flavourflow.git
+cd flavourflow
+pip install streamlit yt-dlp openai-whisper groq python-dotenv
+streamlit run streamlit_app.py
+```
+
+Then open `http://localhost:8501`.
 
 ## Pipeline
 
-1. User pastes TikTok URL
-2. Parse video ID and fetch metadata via yt-dlp
-3. Download video and check for subtitles
-4. Extract speech text from subtitles (or Whisper ASR fallback)
-5. Send metadata + speech text to Qwen2.5 LLM
-6. LLM classifies video and extracts structured recipe as JSON
-7. Display formatted recipe output
+```
+TikTok URL
+    │
+    ├─ yt-dlp ──────────► video + subtitles download
+    │
+    ├─ subtitles? ──Yes──► extract text directly
+    │       └──No────────► Whisper base (ASR fallback)
+    │
+    ├─ ffmpeg ───────────► 5 frames at fps=1/3
+    │
+    ├─ LLaMA 4 Scout ────► visual description of ingredients/techniques
+    │   (Groq Vision API)
+    │
+    └─ LLaMA 3.3 70B ────► structured JSON recipe
+        (Groq API)              dish_name, cuisine_type, difficulty,
+                                prep_time, cook_time, servings,
+                                ingredients, steps, allergens, dietary
+```
 
 ## Tech Stack
-- **yt-dlp** — TikTok video metadata and download
-- **OpenAI Whisper** — speech-to-text fallback (coming soon)
-- **Qwen2.5-1.5B-Instruct** — local LLM for recipe structuring
-- **Marimo** — interactive notebook environment
-- **Python 3.11**
 
-## Supported Languages (planned)
-- English
-- Arabic
-- Chinese
-- Malay
+| Tool | Role |
+|------|------|
+| **yt-dlp** | TikTok video and subtitle download |
+| **OpenAI Whisper** (base) | Speech-to-text fallback |
+| **ffmpeg** | Frame extraction |
+| **LLaMA 4 Scout 17B** (Groq) | Visual frame analysis |
+| **LLaMA 3.3 70B** (Groq) | Recipe extraction and structuring |
+| **Streamlit** | Web interface |
+| **Python 3.9+** | Runtime |
 
-## Upcoming Features
-- Whisper ASR fallback for videos without subtitles
-- Vision analysis (VLM frame extraction)
-- Multi-language translation
-- Halal status detection
-- Web UI (Gradio/Streamlit)
+## Features
+
+- Extracts recipes from TikTok videos in any language, outputs in English
+- Detects allergens (Gluten, Dairy, Eggs, Nuts, Soy, Shellfish, Fish, Sesame)
+- Dietary labels (Vegetarian, Vegan, Halal, Gluten-Free, Dairy-Free)
+- Shopping list copy button
+- Recipe library grouped by cuisine with thumbnails
+- Live pipeline status during extraction
 
 ## Project Structure
+
 ```
-Flavourflow.py    → main marimo notebook with full pipeline
-src/            → source code modules
-prompts/        → LLM prompt templates and logs
-outputs/        → downloaded videos and extracted data
-tests/          → test scripts and evaluation
+streamlit_app.py    → main Streamlit web interface
+app.py              → original Gradio version (reference)
+docs/prompts.md     → full prompt documentation
+outputs/            → downloaded videos, frames, history (gitignored)
+.env                → GROQ_API_KEY (gitignored)
 ```
 
-## Quick Start
-```bash
-cd flavourflow
-uv venv --python python3.11
-source .venv/bin/activate
-uv pip install -r requirements.txt
-marimo edit Flavorflow.py
+## Environment Variables
+
+Create a `.env` file:
 ```
+GROQ_API_KEY=your_key_here
+```
+
+Get a free key at https://console.groq.com
+
+## Supported Languages
+
+Tested on: English, Malay, Thai, Arabic, Chinese (Mandarin)
+
+## Known Limitations
+
+- Whisper base struggles with loud background music
+- Allergen labels are AI-inferred — not verified against ingredient sourcing
+- Only 5 frames sampled — ingredients shown briefly may be missed
+- Cannot download private or region-locked TikTok videos
