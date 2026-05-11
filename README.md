@@ -1,86 +1,117 @@
 # FlavourFlow
 
-A multimodal AI pipeline that extracts structured recipes from TikTok cooking videos. Paste a URL — get a formatted recipe card with ingredients, steps, allergens, and dietary labels.
+A multimodal AI pipeline that extracts structured recipes from TikTok, Instagram Reels, and YouTube Shorts cooking videos. Paste a URL — get a full recipe card with ingredients, steps, allergens, dietary labels, and a UK price estimate. Compare two recipes head-to-head in Battle Mode.
 
 ## Run Locally
 
 ```bash
-git clone git@github.com:s5823597/flavourflow.git
-cd flavourflow
+git clone git@github.com:s5823597/recipetok.git
+cd recipetok
 pip install streamlit yt-dlp openai-whisper groq python-dotenv
 streamlit run streamlit_app.py
 ```
 
 Then open `http://localhost:8501`.
 
+Create a `.env` file in the project root:
+```
+GROQ_API_KEY=your_key_here
+```
+Get a free key at https://console.groq.com
+
+---
+
 ## Pipeline
 
 ```
-TikTok URL
+Video URL (TikTok / Instagram Reels / YouTube Shorts)
     │
     ├─ yt-dlp ──────────► video + subtitles download
     │
     ├─ subtitles? ──Yes──► extract text directly
-    │       └──No────────► Whisper base (ASR fallback)
+    │       └──No────────► Whisper ASR (small model, configurable)
     │
-    ├─ ffmpeg ───────────► 5 frames at fps=1/3
+    ├─ ffmpeg ───────────► N frames evenly sampled (5–15, configurable)
     │
-    ├─ LLaMA 4 Scout ────► visual description of ingredients/techniques
+    ├─ LLaMA 4 Scout ────► visual description of ingredients & techniques
     │   (Groq Vision API)
     │
     └─ LLaMA 3.3 70B ────► structured JSON recipe
         (Groq API)              dish_name, cuisine_type, difficulty,
                                 prep_time, cook_time, servings,
-                                ingredients, steps, allergens, dietary
+                                ingredients (with confidence scores),
+                                steps, allergens, dietary,
+                                price_estimate_gbp
 ```
+
+---
+
+## Features
+
+### Recipe Extractor
+- Supports **TikTok**, **Instagram Reels**, and **YouTube Shorts**
+- Extracts recipes in any language, outputs in **English**
+- Detects **allergens**: Gluten, Dairy, Eggs, Nuts, Peanuts, Soy, Shellfish, Fish, Sesame
+- **Dietary labels**: Vegetarian, Vegan, Halal, Gluten-Free, Dairy-Free
+- **Ingredient confidence scores** — ⚠ CHECK / ⚠ VERIFY badges on uncertain ingredients
+- **UK supermarket price estimate** (LLM-estimated range in GBP)
+- **Ingredient type cards** — colour-coded by type (Protein, Veggie, Spice, Dairy, Grain, Sauce)
+- **Shopping list download** — formatted by ingredient category as `.txt`
+- Cinematic hero image from extracted video frames
+- Recipe library with thumbnails saved to SQLite database
+
+### Battle Mode ⚔️
+- Pick any two saved recipes and compare them side-by-side
+- Or paste new URLs to extract and compare on the fly
+- Shows ingredients, cooking method, price, and allergens for both recipes simultaneously
+
+### Settings
+- **Whisper model**: `base` (fastest) / `small` (default) / `medium` (most accurate)
+- **Frames to sample**: 5–15 frames (more frames = richer visual analysis)
+
+---
 
 ## Tech Stack
 
 | Tool | Role |
 |------|------|
-| **yt-dlp** | TikTok video and subtitle download |
-| **OpenAI Whisper** (base) | Speech-to-text fallback |
+| **yt-dlp** | Multi-platform video and subtitle download |
+| **OpenAI Whisper** | Speech-to-text fallback (small model by default) |
 | **ffmpeg** | Frame extraction |
 | **LLaMA 4 Scout 17B** (Groq) | Visual frame analysis |
 | **LLaMA 3.3 70B** (Groq) | Recipe extraction and structuring |
 | **Streamlit** | Web interface |
+| **SQLite** | Recipe history database |
 | **Python 3.9+** | Runtime |
 
-## Features
-
-- Extracts recipes from TikTok videos in any language, outputs in English
-- Detects allergens (Gluten, Dairy, Eggs, Nuts, Soy, Shellfish, Fish, Sesame)
-- Dietary labels (Vegetarian, Vegan, Halal, Gluten-Free, Dairy-Free)
-- Shopping list copy button
-- Recipe library grouped by cuisine with thumbnails
-- Live pipeline status during extraction
+---
 
 ## Project Structure
 
 ```
-streamlit_app.py    → main Streamlit web interface
-app.py              → original Gradio version (reference)
-docs/prompts.md     → full prompt documentation
-outputs/            → downloaded videos, frames, history (gitignored)
-.env                → GROQ_API_KEY (gitignored)
+streamlit_app.py       → main Streamlit web app (Recipe Extractor + Battle Mode)
+battle_app.py          → standalone battle app (legacy)
+app.py                 → original Gradio version (reference only)
+__marimo__/            → Marimo notebook prototypes
+docs/                  → prompt documentation
+outputs/               → downloaded videos, frames, database (gitignored)
+.env                   → GROQ_API_KEY (gitignored)
 ```
 
-## Environment Variables
+---
 
-Create a `.env` file:
-```
-GROQ_API_KEY=your_key_here
-```
+## Supported Platforms & Languages
 
-Get a free key at https://console.groq.com
+**Platforms tested:** TikTok · Instagram Reels · YouTube Shorts
 
-## Supported Languages
+**Languages tested:** English · Malay · Thai · Arabic · Chinese (Mandarin)
 
-Tested on: English, Malay, Thai, Arabic, Chinese (Mandarin)
+---
 
 ## Known Limitations
 
-- Whisper base struggles with loud background music
-- Allergen labels are AI-inferred — not verified against ingredient sourcing
-- Only 5 frames sampled — ingredients shown briefly may be missed
-- Cannot download private or region-locked TikTok videos
+- Whisper struggles with loud background music (use `medium` model for better accuracy)
+- Allergen and dietary labels are AI-inferred — not verified against actual ingredient sourcing
+- Frame sampling may miss ingredients shown very briefly in the video
+- Cannot download private or region-locked videos
+- UK price estimates are LLM approximations, not live supermarket data
