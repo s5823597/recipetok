@@ -11,7 +11,7 @@ import datetime
 from groq import Groq
 from dotenv import load_dotenv
 
-load_dotenv("/home/s5823597/Desktop/SEM/flavourflow/.env")
+load_dotenv()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 DB_FILE      = "outputs/flavourflow.db"
 
@@ -21,6 +21,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+if not GROQ_API_KEY:
+    st.error("No GROQ API key found. Please create a `.env` file in the project folder with:\n\n`GROQ_API_KEY=your_key_here`\n\nGet a free key at https://console.groq.com")
+    st.stop()
 
 for _k, _v in {
     "current_recipe": None, "current_frame_b64": None,
