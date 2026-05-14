@@ -19,6 +19,8 @@ GROQ_API_KEY=your_key_here
 ```
 Get a free key at https://console.groq.com
 
+The API key is required because FlavourFlow uses two AI models hosted on Groq's servers — LLaMA 4 Scout for visual frame analysis and LLaMA 3.3 70B for recipe extraction. Every request is processed on Groq's infrastructure, and the key is how Groq authenticates your account. Groq has a generous free tier, so running the app for demo purposes costs nothing.
+
 ---
 
 ## Pipeline
