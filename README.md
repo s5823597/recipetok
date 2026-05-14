@@ -52,7 +52,7 @@ Video URL (TikTok / Instagram Reels / YouTube Shorts)
 - Supports **TikTok**, **Instagram Reels**, and **YouTube Shorts**
 - Extracts recipes in any language, outputs in **English**
 - Detects **allergens**: Gluten, Dairy, Eggs, Nuts, Peanuts, Soy, Shellfish, Fish, Sesame
-- **Dietary labels**: Vegetarian, Vegan, Halal, Gluten-Free, Dairy-Free
+- **Dietary labels**: Vegetarian, Vegan, Gluten-Free, Dairy-Free
 - **Ingredient confidence scores** — ⚠ CHECK / ⚠ VERIFY badges on uncertain ingredients
 - **UK supermarket price estimate** (LLM-estimated range in GBP)
 - **Ingredient type cards** — colour-coded by type (Protein, Veggie, Spice, Dairy, Grain, Sauce)

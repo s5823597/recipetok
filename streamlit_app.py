@@ -185,9 +185,17 @@ div[data-testid="stTextArea"] textarea {
     background: #08080F !important;
     border: 2px solid #2A2A4A !important;
     border-radius: 0 !important;
-    color: #CCC !important;
+    color: #FFFFFF !important;
     font-family: 'Courier New', monospace !important;
     font-size: 0.85rem !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    opacity: 1 !important;
+}
+div[data-testid="stTextArea"] textarea:disabled,
+div[data-testid="stTextArea"] textarea[disabled] {
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+    opacity: 1 !important;
 }
 
 /* ── Hide Streamlit chrome ── */
@@ -417,7 +425,7 @@ def extract_recipe(meta, speech_text, visual_desc):
 - ingredients: list of {{"quantity":"...","item":"...","confidence":"high|medium|low"}} — use low when the ingredient is unclear from the video or audio
 - steps: list of strings
 - allergens: list from [Gluten,Dairy,Eggs,Nuts,Peanuts,Soy,Shellfish,Fish,Sesame] — only if confident
-- dietary: list from [Vegetarian,Vegan,Gluten-Free,Dairy-Free,Halal,Contains Nuts] — only if confident
+- dietary: list from [Vegetarian,Vegan,Gluten-Free,Dairy-Free,Contains Nuts] — only if confident
 - price_estimate_gbp: {{"min":<int>,"max":<int>}} — estimated UK supermarket cost in GBP
 
 Translate everything to English. Respond ONLY with valid JSON.
@@ -455,9 +463,9 @@ def _ing_card(ing) -> str:
     dn  = (name[:13] + "…") if len(name) > 13 else name
     dq  = (qty[:11]  + "…") if len(qty)  > 11 else qty
     if conf == "low":
-        conf_html = '<div style="font-family:\'Press Start 2P\',monospace;font-size:0.4rem;color:#FF6B6B;margin-top:0.1rem;">⚠ CHECK</div>'
+        conf_html = '<div style="font-family:\'Press Start 2P\',monospace;font-size:0.6rem;color:#FF6B6B;margin-top:0.2rem;">⚠ CHECK</div>'
     elif conf == "medium":
-        conf_html = '<div style="font-family:\'Press Start 2P\',monospace;font-size:0.4rem;color:#FFD43B;margin-top:0.1rem;">⚠ VERIFY</div>'
+        conf_html = '<div style="font-family:\'Press Start 2P\',monospace;font-size:0.6rem;color:#FFD43B;margin-top:0.2rem;">⚠ VERIFY</div>'
     else:
         conf_html = ""
     return f"""
@@ -595,7 +603,11 @@ def _render_recipe(recipe, frame_b64=None):
     with ingr_col:
         st.markdown("""
         <div style="font-family:'Press Start 2P',monospace;font-size:0.72rem;
-                    color:#888;letter-spacing:3px;margin-bottom:1rem;">── INGREDIENTS ──</div>""",
+                    color:#888;letter-spacing:3px;margin-bottom:0.6rem;">── INGREDIENTS ──</div>
+        <div style="display:flex;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
+            <span style="font-size:0.8rem;color:#FFD43B;">⚠ VERIFY — AI is unsure about this ingredient, check the video</span>
+            <span style="font-size:0.8rem;color:#FF6B6B;">⚠ CHECK — AI could not clearly identify this, rewatch before shopping</span>
+        </div>""",
                     unsafe_allow_html=True)
         if ings:
             cards = '<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">'
@@ -930,9 +942,9 @@ with st.sidebar:
             thumb = _frame_from_dir(h.get("frames_dir",""))
             if thumb:
                 st.markdown(
-                    f'<div style="border:1px solid #2A2A4A;overflow:hidden;margin-bottom:0.2rem;">'
+                    f'<div style="border:2px solid #2A2A4A;overflow:hidden;margin-bottom:0.2rem;">'
                     f'<img src="data:image/jpeg;base64,{thumb}" '
-                    f'style="width:100%;height:60px;object-fit:cover;display:block;filter:brightness(0.7);"></div>',
+                    f'style="width:100%;height:100px;object-fit:cover;display:block;"></div>',
                     unsafe_allow_html=True)
             if st.button(f"🍴 {h.get('dish_name','Unknown')}", key=f"sb_{ci}", use_container_width=True):
                 st.session_state.current_recipe      = h["recipe"]
