@@ -14,9 +14,14 @@ streamlit run streamlit_app.py
 Then open `http://localhost:8501`.
 
 Create a `.env` file in the project root:
+
+1. Open a text editor (Notepad on Windows, TextEdit on Mac, gedit on Linux)
+2. Type exactly this:
 ```
 GROQ_API_KEY=your_key_here
 ```
+3. Save the file as `.env` (no other extension) inside the `flavourflow` folder — same folder as `streamlit_app.py`
+
 Get a free key at https://console.groq.com
 
 The API key is required because FlavourFlow uses two AI models hosted on Groq's servers — LLaMA 4 Scout for visual frame analysis and LLaMA 3.3 70B for recipe extraction. Every request is processed on Groq's infrastructure, and the key is how Groq authenticates your account. Groq has a generous free tier, so running the app for demo purposes costs nothing.
