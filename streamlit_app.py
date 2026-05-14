@@ -1,20 +1,24 @@
-import streamlit as st
-import yt_dlp
-import whisper
-import json
-import os
-import re
-import sqlite3
-import subprocess
-import base64
-import datetime
-from groq import Groq
-from dotenv import load_dotenv
+# ── Imports ────────────────────────────────────────────────────────────────────
+# Standard libraries and third-party packages used across the pipeline
+import streamlit as st       # Web UI framework
+import yt_dlp                # Downloads videos and subtitles from TikTok, Instagram, YouTube
+import whisper               # OpenAI speech-to-text model (runs locally)
+import json                  # Parse and serialise JSON data
+import os                    # File and directory operations
+import re                    # Regular expressions (used to clean LLM output)
+import sqlite3               # Lightweight local database for recipe history
+import subprocess            # Run ffmpeg as a shell command to extract video frames
+import base64                # Encode image files to text for the vision API
+import datetime              # Timestamp each saved recipe
+from groq import Groq        # Groq API client — hosts LLaMA 4 Scout and LLaMA 3.3 70B
+from dotenv import load_dotenv  # Loads GROQ_API_KEY from the .env file
 
+# ── Config ─────────────────────────────────────────────────────────────────────
 load_dotenv()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-DB_FILE      = "outputs/flavourflow.db"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")  # Read API key from environment
+DB_FILE      = "outputs/flavourflow.db"             # SQLite database file path
 
+# ── Page setup ─────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="FlavourFlow",
     page_icon="🍳",
@@ -22,10 +26,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── API key guard ───────────────────────────────────────────────────────────────
+# Stop the app immediately if no API key is found — everything else depends on Groq
 if not GROQ_API_KEY:
     st.error("No GROQ API key found. Please create a `.env` file in the project folder with:\n\n`GROQ_API_KEY=your_key_here`\n\nGet a free key at https://console.groq.com")
     st.stop()
 
+# ── Session state ───────────────────────────────────────────────────────────────
+# Streamlit re-runs the entire script on every user interaction.
+# session_state persists variables (like the current recipe) across those re-runs.
 for _k, _v in {
     "current_recipe": None, "current_frame_b64": None,
     "speech_text": "", "visual_desc": "", "meta_text": "",
@@ -38,6 +47,8 @@ for _k, _v in {
         st.session_state[_k] = _v
 
 # ── Global CSS ─────────────────────────────────────────────────────────────────
+# Custom styling: dark retro theme using Press Start 2P (pixel font) and Inter.
+# Overrides Streamlit's default colours for buttons, inputs, tabs, and sidebar.
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;500;600;700&display=swap');
@@ -185,6 +196,7 @@ div[data-testid="stExpander"] {
 div[data-testid="stExpander"] summary { color: #888 !important; }
 
 /* ── Text area ── */
+/* -webkit-text-fill-color overrides the browser's forced grey colour on disabled textareas */
 div[data-testid="stTextArea"] textarea {
     background: #08080F !important;
     border: 2px solid #2A2A4A !important;
@@ -218,7 +230,9 @@ hr { border-color: #2A2A4A; }
 """, unsafe_allow_html=True)
 
 
-# ── Ingredient type system (shared) ────────────────────────────────────────────
+# ── Ingredient type system ──────────────────────────────────────────────────────
+# Each ingredient is classified into one of 7 types.
+# _TYPES maps each type to a display label, colour, background, and default emoji.
 _TYPES = {
     "protein":   {"label": "PROTEIN", "color": "#FF6B6B", "bg": "#1A0808", "emoji": "🥩"},
     "vegetable": {"label": "VEGGIE",  "color": "#51CF66", "bg": "#081A0A", "emoji": "🥦"},
@@ -228,6 +242,7 @@ _TYPES = {
     "sauce":     {"label": "SAUCE",   "color": "#CC5DE8", "bg": "#120820", "emoji": "🫙"},
     "other":     {"label": "OTHER",   "color": "#868E96", "bg": "#111111", "emoji": "❓"},
 }
+# _EMOJIS maps specific ingredient name substrings to a relevant emoji character
 _EMOJIS = {
     "garlic":"🧄","onion":"🧅","tomato":"🍅","carrot":"🥕","chilli":"🌶️","chili":"🌶️",
     "pepper":"🫑","egg":"🥚","chicken":"🍗","beef":"🥩","pork":"🥩","fish":"🐟",
@@ -243,6 +258,7 @@ _EMOJIS = {
 }
 
 def _classify(name: str) -> str:
+    """Classify an ingredient name into one of 7 types using keyword matching."""
     n = name.lower()
     if any(k in n for k in ["chicken","beef","pork","fish","salmon","tuna","shrimp","prawn","egg","tofu","lamb","meat","turkey","bacon","sausage","mince","steak","cod"]):
         return "protein"
@@ -259,6 +275,7 @@ def _classify(name: str) -> str:
     return "other"
 
 def _emoji(name: str) -> str:
+    """Return the most relevant emoji for an ingredient name."""
     n = name.lower()
     for key, em in _EMOJIS.items():
         if key in n:
@@ -268,6 +285,12 @@ def _emoji(name: str) -> str:
 
 # ── SQLite helpers ──────────────────────────────────────────────────────────────
 def init_db():
+    """
+    Create the SQLite database and recipes table on first run.
+    Also migrates any existing history.json file from the old flat-file storage system.
+    The url column has a UNIQUE constraint so re-extracting the same video updates
+    the existing row instead of creating a duplicate (handled by INSERT OR REPLACE).
+    """
     os.makedirs("outputs", exist_ok=True)
     con = sqlite3.connect(DB_FILE)
     con.execute("""
@@ -307,6 +330,7 @@ def init_db():
     con.close()
 
 def load_history():
+    """Load the 20 most recent recipes from SQLite, newest first."""
     if not os.path.exists(DB_FILE):
         return []
     try:
@@ -326,6 +350,11 @@ def load_history():
         return []
 
 def save_history(url, recipe, frames_dir):
+    """
+    Save or update a recipe in SQLite.
+    INSERT OR REPLACE uses the UNIQUE url constraint to overwrite existing rows,
+    preventing duplicate entries when the same video is extracted more than once.
+    """
     os.makedirs("outputs", exist_ok=True)
     con = sqlite3.connect(DB_FILE)
     con.execute(
@@ -339,10 +368,12 @@ def save_history(url, recipe, frames_dir):
     con.commit()
     con.close()
 
+# Initialise the database on every app start
 init_db()
 
 # ── Platform detection ──────────────────────────────────────────────────────────
 def _detect_platform(url: str) -> str:
+    """Identify which platform a URL belongs to (TikTok, Instagram, or YouTube)."""
     u = url.lower()
     if "tiktok.com"   in u: return "TikTok"
     if "instagram.com" in u: return "Instagram"
@@ -350,6 +381,10 @@ def _detect_platform(url: str) -> str:
     return "Video"
 
 def _frame_from_dir(frames_dir: str):
+    """
+    Return a base64-encoded JPEG from the middle of a frames directory.
+    Used to generate thumbnail previews in the sidebar and Battle Mode.
+    """
     if not frames_dir or not os.path.exists(frames_dir):
         return None
     frames = sorted([f for f in os.listdir(frames_dir) if f.endswith(".jpg")])
@@ -362,10 +397,19 @@ def _frame_from_dir(frames_dir: str):
 
 # ── Pipeline functions ──────────────────────────────────────────────────────────
 def fetch_metadata(url):
+    """
+    Stage 1: Fetch video metadata (title, description, uploader, duration) using yt-dlp.
+    Does not download the video — metadata only.
+    """
     with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
         return ydl.extract_info(url, download=False)
 
 def download_video(url):
+    """
+    Stage 2: Download the video file and subtitle file using yt-dlp.
+    Returns (vf, sf) — video file path and subtitle file path.
+    sf is None if no subtitle file was found (Whisper fallback will be used instead).
+    """
     os.makedirs("outputs", exist_ok=True)
     opts = {
         "writesubtitles": True, "subtitleslangs": ["all"],
@@ -383,7 +427,14 @@ def download_video(url):
     return vf, sf
 
 def extract_speech(sf, vf, model_size="small"):
+    """
+    Stage 3: Extract spoken text from the video.
+    Subtitle-first: if a platform subtitle file exists, parse it directly (faster, more accurate).
+    Whisper fallback: if no subtitle file, run OpenAI Whisper locally on the video audio.
+    Returns (transcript text, source label).
+    """
     if sf:
+        # Parse the .vtt subtitle file — skip WEBVTT headers, timestamps, and sequence numbers
         text = ""
         with open(sf) as f:
             for line in f:
@@ -392,15 +443,24 @@ def extract_speech(sf, vf, model_size="small"):
                     text += line + " "
         return text.strip(), "Platform subtitles"
     if vf:
+        # Load Whisper model and transcribe the audio — runs on CPU if no GPU is available
         model = whisper.load_model(model_size)
         return model.transcribe(vf)["text"].strip(), f"Whisper {model_size}"
     return "", "none"
 
 def extract_frames_and_analyse(video_file, num_frames=10):
+    """
+    Stage 4: Extract video frames using ffmpeg, then send them to LLaMA 4 Scout (vision model).
+    Frames are sampled at fps=1/3 (one frame every 3 seconds), up to num_frames total.
+    Each frame is base64-encoded so it can be sent as text in the Groq API request.
+    All frames are sent in a single API call so the model can cross-reference them.
+    Returns (visual description text, frames directory path).
+    """
     if not video_file or not GROQ_API_KEY:
         return "", None
     fd = f"outputs/frames_{os.path.basename(video_file).split('.')[0]}"
     os.makedirs(fd, exist_ok=True)
+    # Run ffmpeg to extract frames from the video file
     subprocess.run(
         ["ffmpeg", "-i", video_file, "-vf", "fps=1/3", "-vframes", str(num_frames),
          f"{fd}/frame_%02d.jpg", "-y", "-loglevel", "error"]
@@ -408,12 +468,14 @@ def extract_frames_and_analyse(video_file, num_frames=10):
     frames = sorted([f"{fd}/{f}" for f in os.listdir(fd) if f.endswith(".jpg")])
     if not frames:
         return "", None
+    # Build the message content: one image per frame plus a text instruction
     content = []
     for fp in frames:
         with open(fp, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
         content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
     content.append({"type": "text", "text": "Describe what ingredients, cooking techniques, and dishes you can see. Be specific and concise."})
+    # Send all frames to LLaMA 4 Scout via Groq vision API
     client = Groq(api_key=GROQ_API_KEY)
     resp = client.chat.completions.create(
         model="meta-llama/llama-4-scout-17b-16e-instruct",
@@ -421,7 +483,15 @@ def extract_frames_and_analyse(video_file, num_frames=10):
     return resp.choices[0].message.content, fd
 
 def extract_recipe(meta, speech_text, visual_desc):
+    """
+    Stage 5: Send the combined transcript, visual description, and metadata to LLaMA 3.3 70B.
+    The model extracts a structured recipe as JSON.
+    temperature=0.1 reduces hallucination (invented ingredients/quantities).
+    Post-processing strips markdown fences and unwraps nested keys — LLMs often
+    wrap JSON in code blocks despite being told not to.
+    """
     client = Groq(api_key=GROQ_API_KEY)
+    # Combine all three signals into one context string for the LLM
     context = (f"Video Title: {meta.get('title','')}\nVideo Description: {meta.get('description','')}\n"
                f"Speech Transcript: {speech_text}\nVisual Description: {visual_desc}")
     user_prompt = f"""Extract a recipe from this cooking video. Return JSON with exactly these fields:
@@ -443,10 +513,12 @@ Video Data:\n{context}"""
         ],
         max_tokens=1400, temperature=0.1,
     )
+    # Strip markdown code fences (```json ... ```) that the model sometimes adds
     raw = re.sub(r"```(?:json)?\s*", "", resp.choices[0].message.content).strip()
     try:
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         recipe = json.loads(match.group()) if match else {}
+        # Unwrap nested recipe key if the model wraps output as {"recipe": {...}}
         if "recipe" in recipe and isinstance(recipe["recipe"], dict):
             recipe = recipe["recipe"]
     except Exception:
@@ -456,6 +528,12 @@ Video Data:\n{context}"""
 
 # ── Shared render helpers ───────────────────────────────────────────────────────
 def _ing_card(ing) -> str:
+    """
+    Build an HTML card for a single ingredient.
+    Shows the ingredient emoji, type label, name, quantity, and confidence badge.
+    ⚠ CHECK (red) = low confidence — AI could not clearly identify this ingredient.
+    ⚠ VERIFY (yellow) = medium confidence — AI is unsure, check the video.
+    """
     if isinstance(ing, dict):
         qty, name = ing.get("quantity",""), ing.get("item","Unknown")
         conf = ing.get("confidence","high")
@@ -487,6 +565,10 @@ def _ing_card(ing) -> str:
     </div>"""
 
 def _pipeline_status(steps_done, message, error=False):
+    """
+    Render a visual pipeline progress indicator showing which of the 5 stages are
+    complete (✓), currently running (▶), or pending (○).
+    """
     steps = ["Fetch metadata","Download video","Extract speech","Vision analysis","Extract recipe"]
     rows  = ""
     for i, step in enumerate(steps):
@@ -507,6 +589,12 @@ def _pipeline_status(steps_done, message, error=False):
 
 
 def _render_recipe(recipe, frame_b64=None):
+    """
+    Render a complete recipe card in the UI.
+    Shows: hero image, dish name, cuisine, stats (prep/cook/serves/difficulty),
+    UK price estimate, allergen/dietary badges, ingredient cards, and cooking steps.
+    If dish_name is empty or invalid, shows a 'not a cooking video' message instead.
+    """
     if not recipe:
         return
     dish = recipe.get("dish_name","")
@@ -535,6 +623,7 @@ def _render_recipe(recipe, frame_b64=None):
     p_min = price.get("min","?") if isinstance(price,dict) else "?"
     p_max = price.get("max","?") if isinstance(price,dict) else "?"
 
+    # Hero image — a frame extracted from the video
     if frame_b64:
         st.markdown(f"""
         <div style="border:3px solid #FFD700;box-shadow:5px 5px 0 #8B650844;
@@ -543,7 +632,7 @@ def _render_recipe(recipe, frame_b64=None):
                  style="width:100%;height:500px;object-fit:cover;object-position:center;display:block;">
         </div>""", unsafe_allow_html=True)
 
-    # Title
+    # Dish title and cuisine
     st.markdown(f"""
     <div style="border:3px solid #FFD700;box-shadow:5px 5px 0 #8B6508;
                 background:#0D0D2B;padding:1.3rem;margin-bottom:1rem;">
@@ -553,7 +642,7 @@ def _render_recipe(recipe, frame_b64=None):
         <div style="font-size:1.15rem;color:#AAA;margin-top:0.6rem;font-style:italic;font-weight:500;">{cuisine}</div>
     </div>""", unsafe_allow_html=True)
 
-    # Stats
+    # Stats bar: prep time, cook time, servings, difficulty
     st.markdown(f"""
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:1rem;">
         <div style="background:#0D0D2B;border:2px solid #2A2A4A;padding:0.9rem 0.3rem;text-align:center;">
@@ -574,7 +663,7 @@ def _render_recipe(recipe, frame_b64=None):
         </div>
     </div>""", unsafe_allow_html=True)
 
-    # Price
+    # UK price estimate (LLM-inferred, not live supermarket data)
     st.markdown(f"""
     <div style="border:3px solid #FFD700;background:#0D0D00;box-shadow:4px 4px 0 #8B6508;
                 padding:1.1rem 1.4rem;margin-bottom:1rem;
@@ -588,7 +677,7 @@ def _render_recipe(recipe, frame_b64=None):
                     color:#FFD700;text-shadow:2px 2px 0 #8B6508;">£{p_min}–£{p_max}</div>
     </div>""", unsafe_allow_html=True)
 
-    # Allergen / dietary badges
+    # Allergen badges (red ⚠) and dietary labels (green ✓)
     if allergens or dietary:
         badges = "".join(
             f'<span style="background:#1A0505;border:1px solid #FF6B6B;color:#FF6B6B;'
@@ -602,7 +691,7 @@ def _render_recipe(recipe, frame_b64=None):
         st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;">{badges}</div>',
                     unsafe_allow_html=True)
 
-    # Ingredients
+    # Ingredients column and cooking method column side by side
     ingr_col, method_col = st.columns([2, 3])
     with ingr_col:
         st.markdown("""
@@ -620,6 +709,7 @@ def _render_recipe(recipe, frame_b64=None):
             cards += "</div>"
             st.html(cards)
         if ings:
+            # Build a grouped shopping list for download, organised by ingredient type
             _type_labels = {
                 "protein":"🥩 PROTEINS","vegetable":"🥦 VEGETABLES",
                 "spice":"✨ SPICES & HERBS","dairy":"🧀 DAIRY",
@@ -675,6 +765,11 @@ def _render_recipe(recipe, frame_b64=None):
 
 # ── Battle helpers ──────────────────────────────────────────────────────────────
 def _render_battle_panel(recipe, side: str, frame_b64=None):
+    """
+    Render one side of the Battle Mode comparison panel.
+    Shows the same recipe card content as _render_recipe but in a compact format,
+    colour-coded by player (orange for Player 1, blue for Player 2).
+    """
     if not recipe:
         st.markdown("""
         <div style="border:2px solid #2A2A4A;padding:4rem;text-align:center;">
@@ -792,6 +887,11 @@ def _render_battle_panel(recipe, side: str, frame_b64=None):
 
 
 def _history_selector(player_key: str, border: str):
+    """
+    Render a grid of saved recipe cards for the user to select from in Battle Mode.
+    Each card shows the recipe thumbnail, name, cuisine, and timestamp.
+    Returns (recipe dict, frame base64) for the selected recipe, or (None, None).
+    """
     history = load_history()
     if not history:
         st.markdown("""
@@ -849,6 +949,11 @@ def _history_selector(player_key: str, border: str):
     return None, None
 
 def run_pipeline(url: str, player: str):
+    """
+    Run all 5 pipeline stages for a given URL and display a live progress bar.
+    Used in Battle Mode when the user pastes a new URL instead of selecting a saved recipe.
+    Returns (recipe dict, frame base64) or (None, None) on failure.
+    """
     ph = st.empty()
     def status(step, msg, ok=True):
         pct = int((step / 5) * 100)
@@ -887,6 +992,7 @@ def run_pipeline(url: str, player: str):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
+    # App logo and title
     st.markdown("""
     <div style="text-align:center;padding:1.5rem 0 1rem;">
         <div style="font-size:2.5rem;margin-bottom:0.5rem;">🍳</div>
@@ -902,6 +1008,7 @@ with st.sidebar:
 
     st.markdown('<hr style="border-color:#1A1A3A;margin:0.8rem 0;">', unsafe_allow_html=True)
 
+    # AI model badges
     st.markdown("""
     <div style="font-family:'Press Start 2P',monospace;font-size:0.42rem;
                 color:#3A3A6A;letter-spacing:3px;margin-bottom:0.6rem;">POWERED BY</div>
@@ -916,6 +1023,7 @@ with st.sidebar:
                      padding:4px 10px;font-size:0.72rem;font-weight:600;">yt-dlp + ffmpeg</span>
     </div>""", unsafe_allow_html=True)
 
+    # Settings: let users control Whisper model size and number of frames to sample
     with st.expander("⚙ SETTINGS"):
         st.session_state["num_frames"] = st.slider(
             "Frames to sample", min_value=5, max_value=15,
@@ -932,6 +1040,7 @@ with st.sidebar:
 
     st.markdown('<hr style="border-color:#1A1A3A;margin:0.8rem 0;">', unsafe_allow_html=True)
 
+    # Recipe library: shows the 20 most recent extractions with thumbnails
     st.markdown("""
     <div style="font-family:'Press Start 2P',monospace;font-size:0.42rem;
                 color:#3A3A6A;letter-spacing:3px;margin-bottom:0.8rem;">📚 RECIPE LIBRARY</div>
@@ -950,6 +1059,7 @@ with st.sidebar:
                     f'<img src="data:image/jpeg;base64,{thumb}" '
                     f'style="width:100%;height:100px;object-fit:cover;display:block;"></div>',
                     unsafe_allow_html=True)
+            # Clicking a library button loads that recipe into session_state and re-renders
             if st.button(f"🍴 {h.get('dish_name','Unknown')}", key=f"sb_{ci}", use_container_width=True):
                 st.session_state.current_recipe      = h["recipe"]
                 st.session_state.current_frame_b64   = _frame_from_dir(h.get("frames_dir",""))
@@ -965,6 +1075,7 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 # ── Main area ─────────────────────────────────────════════════════════════════
 # ══════════════════════════════════════════════════════════════════════════════
+# App header
 st.markdown("""
 <div style="text-align:center;padding:2rem 0 1.5rem;">
     <div style="font-family:'Press Start 2P',monospace;font-size:2rem;
@@ -976,6 +1087,7 @@ st.markdown("""
     </div>
 </div>""", unsafe_allow_html=True)
 
+# Two main tabs: Recipe Extractor and Battle Mode
 tab_extract, tab_battle = st.tabs(["🍳  RECIPE EXTRACTOR", "⚔️  BATTLE MODE"])
 
 
@@ -983,6 +1095,7 @@ tab_extract, tab_battle = st.tabs(["🍳  RECIPE EXTRACTOR", "⚔️  BATTLE MOD
 # TAB 1 — RECIPE EXTRACTOR
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_extract:
+    # URL input and Analyse button
     url_col, btn_col = st.columns([5, 1])
     with url_col:
         url = st.text_input("url",
@@ -994,6 +1107,7 @@ with tab_extract:
     st.markdown('<hr style="border-color:#2A2A4A;margin:1rem 0;">', unsafe_allow_html=True)
 
     if analyse and url.strip():
+        # Run the pipeline when user clicks Analyse
         left_col, right_col = st.columns([1, 2])
         with left_col:
             status_ph = st.empty()
@@ -1001,12 +1115,14 @@ with tab_extract:
         with right_col:
             recipe_ph = st.empty()
 
+        # Stage 1: Fetch metadata — hard failure halts pipeline
         try:
             meta = fetch_metadata(url.strip())
         except Exception as e:
             status_ph.markdown(_pipeline_status(0, f"Metadata error: {e}", error=True), unsafe_allow_html=True)
             st.stop()
 
+        # Stage 2: Download video — hard failure halts pipeline
         status_ph.markdown(_pipeline_status(1, "Downloading video…"), unsafe_allow_html=True)
         try:
             vf, sf = download_video(url.strip())
@@ -1014,10 +1130,12 @@ with tab_extract:
             status_ph.markdown(_pipeline_status(1, f"Download error: {e}", error=True), unsafe_allow_html=True)
             st.stop()
 
+        # Stage 3: Extract speech — soft failure returns empty string, pipeline continues
         status_ph.markdown(_pipeline_status(2, "Extracting speech…"), unsafe_allow_html=True)
         _wm = st.session_state.get("whisper_model", "small")
         speech_text, speech_source = extract_speech(sf, vf, model_size=_wm)
 
+        # Stage 4: Vision analysis — soft failure returns empty string, pipeline continues
         status_ph.markdown(_pipeline_status(3, "Vision analysis (LLaMA 4 Scout)…"), unsafe_allow_html=True)
         _nf = st.session_state.get("num_frames", 10)
         try:
@@ -1025,6 +1143,7 @@ with tab_extract:
         except Exception as e:
             visual_desc, frames_dir = f"[Vision skipped: {e}]", None
 
+        # Stage 5: Extract recipe — hard failure halts pipeline
         status_ph.markdown(_pipeline_status(4, "Extracting recipe (LLaMA 3.3 70B)…"), unsafe_allow_html=True)
         try:
             recipe, _ = extract_recipe(meta, speech_text, visual_desc)
@@ -1034,11 +1153,13 @@ with tab_extract:
 
         frame_b64 = _frame_from_dir(frames_dir) if frames_dir else None
 
+        # If no dish name returned, the video is not a cooking video
         if not recipe or not recipe.get("dish_name"):
             status_ph.markdown(_pipeline_status(5, "Not a cooking video — no recipe found", error=True),
                                 unsafe_allow_html=True)
             st.stop()
 
+        # Save to SQLite and render the recipe card
         save_history(url.strip(), recipe, frames_dir or "")
         status_ph.markdown(_pipeline_status(5, f"Done — {speech_source}"), unsafe_allow_html=True)
 
@@ -1046,6 +1167,7 @@ with tab_extract:
             with recipe_ph.container():
                 _render_recipe(recipe, frame_b64)
 
+        # Store results in session_state so they persist across re-runs
         st.session_state.current_recipe    = recipe
         st.session_state.current_frame_b64 = frame_b64
         st.session_state.speech_text       = speech_text
@@ -1058,6 +1180,7 @@ with tab_extract:
             f"Speech:   {speech_source}"
         )
 
+        # Show raw pipeline outputs in tabs so the user can verify the AI's sources
         st.markdown('<hr style="border-color:#2A2A4A;margin:1rem 0;">', unsafe_allow_html=True)
         t1, t2, t3 = st.tabs(["📝 Speech Transcript", "👁 Visual Description", "📊 Metadata"])
         with t1:
@@ -1068,9 +1191,11 @@ with tab_extract:
             st.text_area("", value=st.session_state.meta_text, height=200, disabled=True)
 
     elif st.session_state.current_recipe:
+        # Show the last extracted recipe if user hasn't submitted a new URL
         _render_recipe(st.session_state.current_recipe, st.session_state.current_frame_b64)
 
     else:
+        # Empty state — prompt the user to paste a URL
         st.markdown("""
         <div style="text-align:center;padding:3rem 0 2rem;">
             <div style="font-size:3rem;margin-bottom:1.5rem;">🎬 🎙️ 👁️ 📋</div>
@@ -1087,6 +1212,7 @@ with tab_extract:
 # TAB 2 — BATTLE MODE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_battle:
+    # Battle Mode header
     st.markdown("""
     <div style="text-align:center;padding:1.5rem 0 1.8rem;">
         <div style="font-family:'Press Start 2P',monospace;font-size:2.2rem;
@@ -1099,6 +1225,7 @@ with tab_battle:
     </div>""", unsafe_allow_html=True)
     st.markdown('<hr style="border-color:#2A2A4A;margin:0.5rem 0 1.8rem;">', unsafe_allow_html=True)
 
+    # Two player columns with VS divider in the middle
     p1_col, vs_col, p2_col = st.columns([10, 1, 10])
 
     with p1_col:
@@ -1106,6 +1233,7 @@ with tab_battle:
         <div style="font-family:'Press Start 2P',monospace;font-size:0.68rem;
                     color:#FF6B35;letter-spacing:3px;margin-bottom:1rem;">◀ PLAYER 1</div>""",
                     unsafe_allow_html=True)
+        # Player 1 can choose from saved recipes or paste a new URL
         p1_mode = st.radio("P1 source", ["📚  From Saved", "🔗  New URL"],
                            horizontal=True, label_visibility="collapsed", key="p1_mode_radio")
         p1_recipe = p1_frame = None
@@ -1133,6 +1261,7 @@ with tab_battle:
         <div style="font-family:'Press Start 2P',monospace;font-size:0.68rem;
                     color:#4D9EFF;letter-spacing:3px;margin-bottom:1rem;text-align:right;">PLAYER 2 ▶</div>""",
                     unsafe_allow_html=True)
+        # Player 2 can choose from saved recipes or paste a new URL
         p2_mode = st.radio("P2 source", ["📚  From Saved", "🔗  New URL"],
                            horizontal=True, label_visibility="collapsed", key="p2_mode_radio")
         p2_recipe = p2_frame = None
@@ -1149,6 +1278,7 @@ with tab_battle:
 
     st.markdown('<hr style="border-color:#2A2A4A;margin:1.5rem 0;">', unsafe_allow_html=True)
 
+    # Battle button — centred
     bb1, bb2, bb3 = st.columns([2, 3, 2])
     with bb2:
         battle = st.button("⚔  BATTLE!", use_container_width=True, key="battle_btn")
@@ -1168,6 +1298,7 @@ with tab_battle:
         p1_ok = ("Saved" in p1_mode and p1_recipe is not None) or ("URL" in p1_mode and p1_url_val)
         p2_ok = ("Saved" in p2_mode and p2_recipe is not None) or ("URL" in p2_mode and p2_url_val)
 
+        # Validate both players have a recipe before running
         if not p1_ok or not p2_ok:
             missing = ([" PLAYER 1"] if not p1_ok else []) + (["PLAYER 2"] if not p2_ok else [])
             st.markdown(f"""
@@ -1179,6 +1310,7 @@ with tab_battle:
             </div>""", unsafe_allow_html=True)
         else:
             lc, rc = st.columns(2)
+            # Load saved recipes directly or run the full pipeline for new URLs
             if "Saved" in p1_mode:
                 st.session_state.recipe_left = p1_recipe
                 st.session_state.frame_left  = p1_frame
@@ -1197,6 +1329,7 @@ with tab_battle:
                     st.session_state.frame_right  = f2
             st.rerun()
 
+    # Render side-by-side comparison if both recipes are loaded
     if has_results:
         r1 = st.session_state.recipe_left
         r2 = st.session_state.recipe_right
