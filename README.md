@@ -97,7 +97,6 @@ Video URL (TikTok / Instagram Reels / YouTube Shorts)
 
 ```
 streamlit_app.py       → main Streamlit web app (Recipe Extractor + Battle Mode)
-app.py                 → original Gradio version (reference only)
 __marimo__/            → Marimo notebook prototypes
 docs/                  → prompt documentation
 outputs/               → downloaded videos, frames, database (gitignored)
