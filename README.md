@@ -5,8 +5,8 @@ A multimodal AI pipeline that extracts structured recipes from TikTok, Instagram
 ## Run Locally
 
 ```bash
-git clone git@github.com:s5823597/recipetok.git
-cd recipetok
+git clone git@github.com:s5823597/flavourflow.git
+cd flavourflow
 pip install streamlit yt-dlp openai-whisper groq python-dotenv
 streamlit run streamlit_app.py
 ```
@@ -90,7 +90,6 @@ Video URL (TikTok / Instagram Reels / YouTube Shorts)
 
 ```
 streamlit_app.py       → main Streamlit web app (Recipe Extractor + Battle Mode)
-battle_app.py          → standalone battle app (legacy)
 app.py                 → original Gradio version (reference only)
 __marimo__/            → Marimo notebook prototypes
 docs/                  → prompt documentation
